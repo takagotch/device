@@ -69,26 +69,49 @@ def configure_permitted_parameters
 end
 
 class User::ParameterSanitizer < Devise::ParameterSanitizer
+  def initialize(*)
+    super
+    permit(:sign_up, keys: [:username, :email])
+  end
 end
 
 class ApplicationController < ActionController::Base
+  protected
+  def devise_parameter_sanitizer
+    if resource_class == User
+      User::ParameterSanitizer.new(User, :user, params)
+    else
+      super
+    end
+  end
 end
 
 class Users::SessionsController < Devise::SessionsController
+  # GET /resource/sign_in
+  # def new
+  #   super
+  # end
 end
 
 devise_for :users, controllers: { sessions: 'users/sessions' }
 
 class Users::SessionsController < Devise::SessionsController
+  def create
+  end
 end
 
 class Users::SessionsController < Devise::SessionsController
+  def create
+    super do |resource|
+      BackgroundWorker.trigger(resource)
+    end
+  end
 end
 
 devise_for :users, path: 'auth', path_names: { sign_in: 'login', sign_out: 'logout', password: 'secret', confirmation: 'verification', unlock: 'unlock', registration: 'register', sign_up: 'cmon_let_me_in' }
 
 devise_scope :user do
-  get '', to: ''
+  get 'sign_in', to: 'devise/sessions#new'
 end
 
 devise_for :users, skip: :all
@@ -98,26 +121,32 @@ class PostControllerTest < ActionController::TestCase
 end
 
 RSpec.configure do |config|
+  config.include Devise::Test::ControllerHelpers, type: :controller
+  config.include Devise::Test::ControllerHelpers, type: :view
 end
 
 sign_in @user
 sign_in @user, scope: :admin
 
-test '' do
+test 'GET new' do
+  @request.env['devise.mapping'] = Devise.mappings[:user]
+  sign_in users(:alice)
+  get :new
 end
 
 class PostsTests < ActionDispatch::IntegrationTest
+  include Devise::Test::IntegrationHelpers
 end
 
-sign_in users()
-sign_in users(), scope: :admin
+sign_in users(:bob)
+sign_in users(:bob), scope: :admin
 sign_out :user
 
 RSpec.configure do |config|
   config.include Devise::Test::IntegrationHelpers, type: :feature
 end
 
-config.omniauth :github, '', '', scope: ''
+config.omniauth :github, 'APP_ID', 'APP_SECRET', scope: 'user,public_repo'
 
 create_table :admins do |t|
   t.string :email
@@ -131,7 +160,8 @@ admin_signed_in?
 current_admin
 admin_sesion
 
-def send_devise_notification()
+def send_devise_notification(notification, *args)
+  devise_mailer.send(notification, self, *args).deliver_later
 end
 
 config.log_level = :warn
@@ -151,18 +181,18 @@ en:
   devise:
     sessions:
       users:
-        signed_in: ''
+        signed_in: 'Welcome!'
       admin:
-        signed_in: ''
+        signed_in: 'Hello!'
         
 en:
   devise:
     mailer:
       confirmation_instructions:
-        subject: ''
-        user_subject: ''
+        subject: 'Hello!'
+        user_subject: 'Hello!'
       reset_password_instructions:
-        subject: ''
+        subject: 'Reset instructions'
 
 ```
 
